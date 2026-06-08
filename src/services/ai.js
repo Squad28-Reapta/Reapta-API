@@ -1,4 +1,4 @@
-import Groq from "groq-sdk";
+import Groq from "groq-sdk";// Serviço de integração com Groq para geração de respostas IA
 
 const groq = new Groq({
   apiKey: process.env.GROQ_API_KEY,
