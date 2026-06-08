@@ -1,3 +1,4 @@
+// Rota POST /chat para comunicação com o assistente IA
 import express from "express";
 import sql from "../db.js";
 import { gerarRespostaIA } from "../services/ai.js";
