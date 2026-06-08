@@ -27,7 +27,7 @@ app.use('/api/v1/usuarios', autenticar, usuariosRouter);
 app.use('/api/v1/vendas', autenticar, vendasRouter);
 app.use('/api/v1/relatorios', autenticar, relatoriosRouter);
 
-// eslint-disable-next-line no-unused-vars
+// eslint-disable-next-line no-unused-vars 
 app.use((err, req, res, next) => {
   console.error('[ERRO GLOBAL]', err);
   res.status(500).json({
