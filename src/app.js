@@ -9,6 +9,7 @@ import authRouter from './routes/auth.js';
 import vendasRouter from './routes/vendas.js';
 import relatoriosRouter from './routes/relatorios.js';
 import aiRouter from "./routes/ai.js";
+import clientesRouter from './routes/clientes.js';
 
 const app = express();
 
@@ -26,6 +27,7 @@ app.use('/api/v1/produtos', autenticar, produtosRouter);
 app.use('/api/v1/usuarios', autenticar, usuariosRouter);
 app.use('/api/v1/vendas', autenticar, vendasRouter);
 app.use('/api/v1/relatorios', autenticar, relatoriosRouter);
+app.use('/api/v1/clientes', autenticar, clientesRouter);
 
 // eslint-disable-next-line no-unused-vars 
 app.use((err, req, res, next) => {
