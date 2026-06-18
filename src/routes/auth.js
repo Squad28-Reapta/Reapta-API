@@ -1,12 +1,25 @@
 import express from 'express';
+import { promises as dns } from 'dns';
+import bcrypt from 'bcrypt';
 import sql from '../db.js';
 import { sendEmail } from '../services/mail.js';
 import jwt from 'jsonwebtoken';
 
 const router = express.Router();
-
 const codigos = {};
 
+// Função auxiliar para verificar o domínio do email
+async function verificarDominioEmail(email) {
+  const dominio = email.split('@')[1];
+  try {
+    const registros = await dns.resolveMx(dominio);
+    return registros && registros.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+// ─── LOGIN ───────────────────────────────────────────────────────────────────
 router.post('/login', async (req, res) => {
   try {
     const { email, senha } = req.body;
@@ -14,13 +27,37 @@ router.post('/login', async (req, res) => {
     if (!email || !senha) {
       return res.status(400).json({
         success: false,
-        error: { code: 'CAMPOS_OBRIGATORIOS', message: 'email e senha são obrigatórios' }
+        error: { code: 'CAMPOS_OBRIGATORIOS', message: 'Email e senha são obrigatórios' }
       });
     }
 
-    const [usuario] = await sql`SELECT * FROM usuario WHERE email = ${email} AND senha_hash = ${senha}`;
+    const formatoValido = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+    if (!formatoValido) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'EMAIL_INVALIDO', message: 'Formato de email inválido' }
+      });
+    }
+
+    const dominioValido = await verificarDominioEmail(email);
+    if (!dominioValido) {
+      return res.status(400).json({
+        success: false,
+        error: { code: 'DOMINIO_INVALIDO', message: 'Domínio do email não existe ou não aceita emails' }
+      });
+    }
+
+    const [usuario] = await sql`SELECT * FROM usuario WHERE email = ${email}`;
 
     if (!usuario) {
+      return res.status(401).json({
+        success: false,
+        error: { code: 'CREDENCIAIS_INVALIDAS', message: 'Email ou senha inválidos' }
+      });
+    }
+
+    const senhaCorreta = await bcrypt.compare(senha, usuario.senha_hash);
+    if (!senhaCorreta) {
       return res.status(401).json({
         success: false,
         error: { code: 'CREDENCIAIS_INVALIDAS', message: 'Email ou senha inválidos' }
@@ -33,13 +70,17 @@ router.post('/login', async (req, res) => {
         error: { code: 'USUARIO_INATIVO', message: 'Usuário inativo. Contate o administrador.' }
       });
     }
-    
-    const token = jwt.sign({ id: usuario.id, email: usuario.email, perfil: usuario.perfil },
+
+    const { senha_hash, ...usuarioSeguro } = usuario;
+
+    const token = jwt.sign(
+      { id: usuario.id, email: usuario.email, perfil: usuario.perfil },
       process.env.JWT_SECRET,
-      {expiresIn: '8h'});
+      { expiresIn: '8h' }
+    );
 
+    res.json({ success: true, data: { token, usuario: usuarioSeguro } });
 
-    res.json({ success: true, data: { token, usuario } });
   } catch (error) {
     console.error('[ERRO POST /auth/login]', error);
     res.status(500).json({
@@ -49,10 +90,11 @@ router.post('/login', async (req, res) => {
   }
 });
 
+// ─── FORGOT PASSWORD ─────────────────────────────────────────────────────────
 router.post('/forgot-password', async (req, res) => {
   try {
     const { email } = req.body;
-    
+
     const [usuario] = await sql`SELECT * FROM usuario WHERE email = ${email}`;
 
     if (!usuario) {
@@ -66,7 +108,7 @@ router.post('/forgot-password', async (req, res) => {
 
     codigos[email] = {
       codigo: codigoRecuperacao,
-      expira: Date.now() + 15 * 60 * 1000 // 15 minutos
+      expira: Date.now() + 15 * 60 * 1000
     };
 
     await sendEmail(email, codigoRecuperacao);
@@ -80,8 +122,9 @@ router.post('/forgot-password', async (req, res) => {
       error: { code: 'ERRO_SERVIDOR', message: 'Erro ao processar solicitação' }
     });
   }
-})
+});
 
+// ─── VERIFY CODE ─────────────────────────────────────────────────────────────
 router.post('/verify-code', async (req, res) => {
   try {
     const { email, codigo } = req.body;
@@ -124,9 +167,9 @@ router.post('/verify-code', async (req, res) => {
       error: { code: 'ERRO_SERVIDOR', message: 'Erro ao processar solicitação' }
     });
   }
-})
+});
 
-
+// ─── RESET PASSWORD ───────────────────────────────────────────────────────────
 router.post('/reset-password', async (req, res) => {
   try {
     const { resetToken, newPassword } = req.body;
@@ -148,7 +191,9 @@ router.post('/reset-password', async (req, res) => {
       });
     }
 
-    await sql`UPDATE usuario SET senha_hash = ${newPassword} WHERE email = ${email}`;
+    // ✅ Salva a nova senha com hash
+    const novoHash = await bcrypt.hash(newPassword, 10);
+    await sql`UPDATE usuario SET senha_hash = ${novoHash} WHERE email = ${email}`;
 
     delete codigos[`reset-${email}`];
     res.json({ success: true, message: 'Senha redefinida com sucesso' });

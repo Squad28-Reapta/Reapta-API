@@ -1,4 +1,5 @@
 import express from 'express';
+import bcrypt from 'bcrypt';
 import sql from '../db.js';
 
 const router = express.Router();
@@ -6,7 +7,7 @@ const router = express.Router();
 // GET — buscar todos os usuários
 router.get('/', async (req, res) => {
   try {
-    const usuarios = await sql`SELECT * FROM usuario`;
+    const usuarios = await sql`SELECT id, nome, email, perfil, ativo, criado_em FROM usuario`;
     res.json({ success: true, data: usuarios });
   } catch (error) {
     console.error('ERRO GET usuarios:', error);
@@ -21,8 +22,7 @@ router.get('/', async (req, res) => {
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
-
-    const [usuario] = await sql`SELECT * FROM usuario WHERE id = ${id}`;
+    const [usuario] = await sql`SELECT id, nome, email, perfil, ativo, criado_em FROM usuario WHERE id = ${id}`;
 
     if (!usuario) {
       return res.status(404).json({
@@ -33,6 +33,7 @@ router.get('/:id', async (req, res) => {
 
     res.json({ success: true, data: usuario });
   } catch (error) {
+    console.error('ERRO GET usuario/:id:', error);
     res.status(500).json({
       success: false,
       error: { code: 'ERRO_SERVIDOR', message: 'Erro ao buscar usuário' }
@@ -52,7 +53,6 @@ router.post('/', async (req, res) => {
       });
     }
 
-    // verifica se email já existe
     const [emailExiste] = await sql`SELECT id, ativo FROM usuario WHERE email = ${email}`;
     if (emailExiste && emailExiste.ativo === true) {
       return res.status(409).json({
@@ -61,14 +61,18 @@ router.post('/', async (req, res) => {
       });
     }
 
+    // ✅ Hash da senha antes de salvar
+    const senhaHash = await bcrypt.hash(senha, 10);
+
     const [usuario] = await sql`
       INSERT INTO usuario (nome, email, senha_hash, perfil)
-      VALUES (${nome}, ${email}, ${senha}, ${perfil ?? 'funcionario'})
-      RETURNING *
+      VALUES (${nome}, ${email}, ${senhaHash}, ${perfil ?? 'funcionario'})
+      RETURNING id, nome, email, perfil, ativo, criado_em
     `;
 
     res.status(201).json({ success: true, data: usuario });
   } catch (error) {
+    console.error('ERRO POST usuario:', error); // ✅ log adicionado
     res.status(500).json({
       success: false,
       error: { code: 'ERRO_SERVIDOR', message: 'Erro ao criar usuário' }
@@ -76,7 +80,7 @@ router.post('/', async (req, res) => {
   }
 });
 
-// PUT — atualizar usuário completo
+// PUT — atualizar usuário
 router.put('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -89,7 +93,6 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // verifica se usuário existe
     const [existe] = await sql`SELECT id FROM usuario WHERE id = ${id}`;
     if (!existe) {
       return res.status(404).json({
@@ -98,7 +101,6 @@ router.put('/:id', async (req, res) => {
       });
     }
 
-    // verifica se email já pertence a outro usuário
     const [emailExiste] = await sql`SELECT id FROM usuario WHERE email = ${email} AND id != ${id}`;
     if (emailExiste) {
       return res.status(409).json({
@@ -111,11 +113,12 @@ router.put('/:id', async (req, res) => {
       UPDATE usuario
       SET nome = ${nome}, email = ${email}, perfil = ${perfil ?? 'funcionario'}
       WHERE id = ${id}
-      RETURNING *
+      RETURNING id, nome, email, perfil, ativo, criado_em
     `;
 
     res.json({ success: true, data: usuario });
   } catch (error) {
+    console.error('ERRO PUT usuario/:id:', error);
     res.status(500).json({
       success: false,
       error: { code: 'ERRO_SERVIDOR', message: 'Erro ao atualizar usuário' }
@@ -123,7 +126,7 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-// DELETE — soft delete (só marca como inativo)
+// DELETE — soft delete
 router.delete('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -140,6 +143,7 @@ router.delete('/:id', async (req, res) => {
 
     res.json({ success: true, mensagem: 'Usuário desativado com sucesso' });
   } catch (error) {
+    console.error('ERRO DELETE usuario/:id:', error);
     res.status(500).json({
       success: false,
       error: { code: 'ERRO_SERVIDOR', message: 'Erro ao deletar usuário' }

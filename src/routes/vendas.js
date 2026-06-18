@@ -10,19 +10,53 @@ router.get('/', async (req, res) => {
     let vendas;
 
     if (de && ate && estado && vendedor_id) {
-      vendas = await sql`SELECT * FROM venda WHERE data_venda >= ${de} AND data_venda <= ${ate} AND estado = ${estado} AND vendedor_id = ${vendedor_id}`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+        WHERE v.data_venda >= ${de} AND v.data_venda <= ${ate} AND v.estado = ${estado} AND v.vendedor_id = ${vendedor_id}
+      `;
     } else if (de && ate && estado) {
-      vendas = await sql`SELECT * FROM venda WHERE data_venda >= ${de} AND data_venda <= ${ate} AND estado = ${estado}`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+        WHERE v.data_venda >= ${de} AND v.data_venda <= ${ate} AND v.estado = ${estado}
+      `;
     } else if (de && ate && vendedor_id) {
-      vendas = await sql`SELECT * FROM venda WHERE data_venda >= ${de} AND data_venda <= ${ate} AND vendedor_id = ${vendedor_id}`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+        WHERE v.data_venda >= ${de} AND v.data_venda <= ${ate} AND v.vendedor_id = ${vendedor_id}
+      `;
     } else if (de && ate) {
-      vendas = await sql`SELECT * FROM venda WHERE data_venda >= ${de} AND data_venda <= ${ate}`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+        WHERE v.data_venda >= ${de} AND v.data_venda <= ${ate}
+      `;
     } else if (estado) {
-      vendas = await sql`SELECT * FROM venda WHERE estado = ${estado}`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+        WHERE v.estado = ${estado}
+      `;
     } else if (vendedor_id) {
-      vendas = await sql`SELECT * FROM venda WHERE vendedor_id = ${vendedor_id}`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+        WHERE v.vendedor_id = ${vendedor_id}
+      `;
     } else {
-      vendas = await sql`SELECT * FROM venda`;
+      vendas = await sql`
+        SELECT v.*, c.nome AS cliente_nome
+        FROM venda v
+        LEFT JOIN clientes c ON v.fk_cliente = c.id
+      `;
     }
 
     if (vendas.length === 0) {
@@ -44,9 +78,10 @@ router.get('/:id', async (req, res) => {
     const { id } = req.params;
 
     const [venda] = await sql`
-      SELECT v.*, u.nome AS vendedor_nome
+      SELECT v.*, u.nome AS vendedor_nome, c.nome AS cliente_nome, c.cpf_cnpj AS cliente_cpf_cnpj, c.email AS cliente_email, c.telefone AS cliente_telefone
       FROM venda v
       LEFT JOIN usuario u ON v.vendedor_id = u.id
+      LEFT JOIN clientes c ON v.fk_cliente = c.id
       WHERE v.id = ${id}
     `;
 
@@ -85,13 +120,23 @@ router.get('/:id', async (req, res) => {
 router.post('/', async (req, res) => {
   try {
     const vendedor_id = req.usuario.id;
-    const { itens, cidade, estado, desconto_total } = req.body;
+    const { itens, cidade, estado, desconto_total, cliente_id } = req.body;
 
     if (!itens || itens.length === 0) {
       return res.status(400).json({
         success: false,
         error: { code: 'CAMPOS_OBRIGATORIOS', message: 'A venda deve conter pelo menos um item' }
       });
+    }
+
+    if (cliente_id) {
+      const [clienteExiste] = await sql`SELECT id FROM clientes WHERE id = ${cliente_id}`;
+      if (!clienteExiste) {
+        return res.status(404).json({
+          success: false,
+          error: { code: 'NAO_ENCONTRADO', message: 'Cliente não encontrado' }
+        });
+      }
     }
 
     for (const item of itens) {
@@ -119,8 +164,8 @@ router.post('/', async (req, res) => {
     valor_total -= desconto_total ?? 0;
 
     const [venda] = await sql`
-      INSERT INTO venda (vendedor_id, valor_total, desconto_total, cidade, estado)
-      VALUES (${vendedor_id}, ${valor_total}, ${desconto_total ?? 0}, ${cidade ?? null}, ${estado ?? null})
+      INSERT INTO venda (vendedor_id, fk_cliente, valor_total, desconto_total, cidade, estado)
+      VALUES (${vendedor_id}, ${cliente_id ?? null}, ${valor_total}, ${desconto_total ?? 0}, ${cidade ?? null}, ${estado ?? null})
       RETURNING *
     `;
 
