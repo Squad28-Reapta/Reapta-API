@@ -14,7 +14,7 @@ import clientesRouter from './routes/clientes.js';
 const app = express();
 
 app.use(cors({
-  origin: 'https://reapta-frontend.vercel.app/'
+  origin: 'https://reapta-frontend.vercel.app'
 }));
 
 app.use(express.json());
